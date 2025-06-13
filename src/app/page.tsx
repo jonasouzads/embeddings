@@ -190,7 +190,7 @@ export default function Home() {
                   YouTube
                 </a>
                 <a 
-                  href="https://www.instagram.com/jonasouza.ads" 
+                  href="https://www.instagram.com/jonasouzads" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-gray-600 hover:text-pink-600 dark:text-gray-300 dark:hover:text-pink-400 transition-colors flex items-center"
