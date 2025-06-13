@@ -142,7 +142,7 @@ export default function Home() {
         <p className="mb-2">© {new Date().getFullYear()} Wize Embeddings - Gerenciador de Base de Conhecimento</p>
         <div className="mb-4">
           <p className="font-medium">Desenvolvido por Jonas Souza</p>
-          <p>Contato para serviços: (91) 99856-8150</p>
+          <p>Contato para serviços: (91) 98568-1506</p>
           <div className="flex justify-center gap-4 mt-2">
             <a 
               href="https://www.youtube.com/@jonasouza_automacao" 
