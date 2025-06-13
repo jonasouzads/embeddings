@@ -125,7 +125,7 @@ export default function Home() {
             </p>
             <p className="mb-6 text-center text-sm">
               <a 
-                href="https://github.com/seu-usuario/wize-embeddings#configura%C3%A7%C3%A3o" 
+                href="https://github.com/jonasouzads/embeddings#configura%C3%A7%C3%A3o" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
