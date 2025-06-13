@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -7,6 +7,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { ConfiguracaoAPI, BaseConhecimento } from '@/types';
 import { listarBasesConhecimento, excluirBaseConhecimento } from '@/lib/supabase';
+
+// Interface para o documento armazenado no Supabase
+interface DocumentoSupabase {
+  id: string;
+  content: string;
+  metadata: {
+    titulo?: string;
+    dataCriacao?: string;
+    dataAtualizacao?: string;
+    [key: string]: unknown;
+  };
+  embedding?: number[];
+}
 
 interface BaseConhecimentoListaProps {
   configuracaoAPI: ConfiguracaoAPI;
@@ -26,7 +39,7 @@ export function BaseConhecimentoLista({
   const [baseParaExcluir, setBaseParaExcluir] = useState<BaseConhecimento | null>(null);
 
   // Carregar bases de conhecimento
-  const carregarBases = async () => {
+  const carregarBases = useCallback(async () => {
     setCarregando(true);
     setErro(null);
     
@@ -39,7 +52,7 @@ export function BaseConhecimentoLista({
       const basesData = await listarBasesConhecimento(configuracaoAPI);
       
       // Converter os dados da tabela documents para o formato da interface BaseConhecimento
-      const basesFormatadas: BaseConhecimento[] = basesData?.map((doc: any) => ({
+      const basesFormatadas: BaseConhecimento[] = basesData?.map((doc: DocumentoSupabase) => ({
         id: doc.id,
         titulo: doc.metadata?.titulo || 'Sem título',
         conteudo: doc.content,
@@ -54,12 +67,12 @@ export function BaseConhecimentoLista({
     } finally {
       setCarregando(false);
     }
-  };
+  }, [configuracaoAPI]);
 
   // Carregar bases ao montar o componente
   useEffect(() => {
     carregarBases();
-  }, [configuracaoAPI]);
+  }, [configuracaoAPI, carregarBases]);
 
   // Função para confirmar exclusão
   const confirmarExclusao = (base: BaseConhecimento) => {
@@ -168,7 +181,7 @@ export function BaseConhecimentoLista({
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir a base de conhecimento "{baseParaExcluir?.titulo}"?
+              Tem certeza que deseja excluir a base de conhecimento &ldquo;{baseParaExcluir?.titulo}&rdquo;?
               Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>

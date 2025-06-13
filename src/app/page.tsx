@@ -116,7 +116,7 @@ export default function Home() {
               <h3 className="font-medium text-amber-800 mb-2">Aviso de Privacidade</h3>
               <p className="text-sm text-amber-700 mb-2">
                 Este aplicativo não armazena suas chaves de API em nenhum servidor. Todas as chaves são armazenadas apenas
-                localmente no navegador do seu dispositivo. Para limpar suas chaves, clique no botão "Limpar configurações".                
+                localmente no navegador do seu dispositivo. Para limpar suas chaves, clique no botão &ldquo;Limpar configurações&rdquo;.                
               </p>
             </div>
             

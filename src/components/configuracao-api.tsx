@@ -77,7 +77,7 @@ export function ConfiguracaoAPIForm({ onConfiguracao }: ConfiguracaoAPIProps) {
           setCarregando(false); // Importante parar o carregamento
           return; // Interromper o fluxo aqui
         }
-      } catch (dbError: any) {
+      } catch (dbError: unknown) {
         console.error('Erro ao inicializar banco de dados:', dbError);
         throw new Error('Não foi possível conectar ao Supabase. Verifique suas credenciais.');
       }
@@ -175,7 +175,7 @@ export function ConfiguracaoAPIForm({ onConfiguracao }: ConfiguracaoAPIProps) {
             <div>
               <h3 className="text-md font-medium">1. Acesse o SQL Editor do Supabase</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Faça login no seu dashboard do Supabase e acesse a seção "SQL Editor".
+                Faça login no seu dashboard do Supabase e acesse a seção &ldquo;SQL Editor&rdquo;.
               </p>
             </div>
             
