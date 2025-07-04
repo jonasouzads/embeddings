@@ -59,29 +59,64 @@ export const salvarBaseConhecimento = async (
   embedding: number[],
   metadadosAdicionais?: Record<string, any>
 ) => {
-  const supabase = criarClienteSupabase(config);
-  
-  // Metadados base que sempre existirão
-  const metadados = { 
-    titulo, 
-    dataCriacao: new Date().toISOString(), 
-    dataAtualizacao: new Date().toISOString(),
-    ...metadadosAdicionais // Adicionar metadados dinâmicos se fornecidos
-  };
-  
-  const { data, error } = await supabase
-    .from('documents')
-    .insert([
-      {
-        content: conteudo,
-        metadata: metadados,
-        embedding
-      }
-    ])
-    .select();
+  try {
+    console.log(`salvarBaseConhecimento: Iniciando salvamento para "${titulo}"`);
+    console.log(`salvarBaseConhecimento: Tamanho do conteúdo: ${conteudo.length} caracteres`);
+    console.log(`salvarBaseConhecimento: Dimensão do embedding: ${embedding.length}`);
     
-  if (error) throw error;
-  return data;
+    // Validar parâmetros
+    if (!titulo || titulo.trim() === '') {
+      throw new Error('O título não pode estar vazio');
+    }
+    
+    if (!conteudo || conteudo.trim() === '') {
+      throw new Error('O conteúdo não pode estar vazio');
+    }
+    
+    if (!Array.isArray(embedding) || embedding.length === 0) {
+      throw new Error(`Embedding inválido: ${JSON.stringify(embedding).substring(0, 100)}...`);
+    }
+    
+    // Verificar tamanho do embedding (deve ser 1536 para OpenAI)
+    if (embedding.length !== 1536) {
+      console.warn(`Aviso: O embedding tem ${embedding.length} dimensões, mas o esperado é 1536.`);
+    }
+    
+    const supabase = criarClienteSupabase(config);
+    
+    // Metadados base que sempre existirão
+    const metadados = { 
+      titulo, 
+      dataCriacao: new Date().toISOString(), 
+      dataAtualizacao: new Date().toISOString(),
+      ...metadadosAdicionais // Adicionar metadados dinâmicos se fornecidos
+    };
+    
+    console.log('salvarBaseConhecimento: Enviando dados para o Supabase...');
+    const { data, error } = await supabase
+      .from('documents')
+      .insert([
+        {
+          content: conteudo,
+          metadata: metadados,
+          embedding
+        }
+      ])
+      .select();
+      
+    if (error) {
+      console.error('ERRO ao salvar no Supabase:', error);
+      throw error;
+    }
+    
+    console.log(`salvarBaseConhecimento: Dados salvos com sucesso, ID: ${data?.[0]?.id || 'N/A'}`);
+    return data;
+  } catch (error: unknown) {
+    const dbError = error as Error;
+    console.error('ERRO CRÍTICO ao salvar base de conhecimento:', dbError);
+    console.error('Detalhes do erro:', JSON.stringify(dbError, null, 2));
+    throw new Error(`Falha ao salvar no Supabase: ${dbError.message || 'Erro desconhecido no banco de dados'}`);
+  }
 };
 
 // Função para listar todas as bases de conhecimento

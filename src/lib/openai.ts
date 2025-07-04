@@ -38,15 +38,43 @@ export const criarClienteOpenAI = (config: ConfiguracaoAPI) => {
 
 // Função para gerar embedding para um texto usando a API da OpenAI
 export const gerarEmbedding = async (config: ConfiguracaoAPI, texto: string) => {
-  const openai = criarClienteOpenAI(config);
-  
-  const response = await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: texto,
-    encoding_format: "float",
-  });
-
-  return response.data[0].embedding;
+  try {
+    console.log(`gerarEmbedding: Iniciando geração de embedding para texto de ${texto.length} caracteres`);
+    
+    // Validar entrada
+    if (!texto || texto.trim() === '') {
+      throw new Error('O texto para embedding não pode estar vazio');
+    }
+    
+    // Limitar tamanho do texto se necessário (evitar erros de token limit)
+    const textoLimitado = texto.length > 8000 ? texto.substring(0, 8000) : texto;
+    if (textoLimitado.length < texto.length) {
+      console.warn(`gerarEmbedding: Texto truncado de ${texto.length} para 8000 caracteres para evitar limites de token`);
+    }
+    
+    const openai = criarClienteOpenAI(config);
+    
+    console.log('gerarEmbedding: Enviando requisição para a API da OpenAI...');
+    const response = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: textoLimitado,
+      encoding_format: "float",
+    });
+    
+    if (!response.data || !response.data[0] || !response.data[0].embedding) {
+      throw new Error('Resposta da API não contém embedding válido');
+    }
+    
+    const embedding = response.data[0].embedding;
+    console.log(`gerarEmbedding: Embedding gerado com sucesso, dimensão: ${embedding.length}`);
+    
+    return embedding;
+  } catch (error: unknown) {
+    const apiError = error as Error;
+    console.error('ERRO CRÍTICO na geração de embedding:', apiError);
+    console.error('Detalhes do erro:', JSON.stringify(apiError, null, 2));
+    throw new Error(`Falha ao gerar embedding: ${apiError.message || 'Erro desconhecido na API da OpenAI'}`);
+  }
 };
 
 // Função para gerar perguntas e respostas automaticamente para um chunk de texto
@@ -108,77 +136,46 @@ Resposta 3: [Resposta]`;
 
 // Função para dividir textos longos em chunks para processamento com sobreposição
 export const dividirTextoEmChunks = (texto: string, tamanhoMaximo: number = 1000, sobreposicao: number = 200): string[] => {
+  console.log(`dividirTextoEmChunks: Iniciando divisão de texto com ${texto.length} caracteres`);
+  
+  // Verificação de segurança para parâmetros
+  if (tamanhoMaximo <= 0) tamanhoMaximo = 1000;
+  if (sobreposicao < 0) sobreposicao = 0;
+  if (sobreposicao >= tamanhoMaximo) sobreposicao = Math.floor(tamanhoMaximo / 4); // 25% de sobreposição
+  
+  // Se o texto for menor que o tamanho máximo, retornar como um único chunk
   if (texto.length <= tamanhoMaximo) {
+    console.log('dividirTextoEmChunks: Texto menor que o tamanho máximo, retornando como único chunk');
     return [texto];
   }
   
-  // Dividir o texto em parágrafos
-  const paragrafos = texto.split('\n\n');
+  // Abordagem simplificada e robusta: dividir o texto em chunks de tamanho fixo com sobreposição
   const chunks: string[] = [];
-  let chunkAtual = '';
-  let ultimoConteudo = ''; // Para armazenar o conteúdo de sobreposição
+  let posicao = 0;
   
-  for (const paragrafo of paragrafos) {
-    // Se adicionar este parágrafo exceder o tamanho máximo, salvar o chunk atual e começar um novo
-    if (chunkAtual.length + paragrafo.length > tamanhoMaximo) {
-      if (chunkAtual.length > 0) {
-        chunks.push(chunkAtual);
-        
-        // Extrair a parte final do chunk atual para sobreposição
-        if (chunkAtual.length > sobreposicao) {
-          ultimoConteudo = chunkAtual.substring(chunkAtual.length - sobreposicao);
-        } else {
-          ultimoConteudo = chunkAtual;
-        }
-        
-        // Iniciar o próximo chunk com o conteúdo de sobreposição
-        chunkAtual = ultimoConteudo;
-      }
-      
-      // Se o parágrafo for maior que o tamanho máximo, dividi-lo em partes menores
-      if (paragrafo.length > tamanhoMaximo - sobreposicao) {
-        let inicio = 0;
-        while (inicio < paragrafo.length) {
-          const fim = Math.min(inicio + tamanhoMaximo - ultimoConteudo.length, paragrafo.length);
-          const parte = paragrafo.substring(inicio, fim);
-          
-          // Adicionar a parte ao chunk atual ou criar um novo chunk
-          if (chunkAtual.length + parte.length <= tamanhoMaximo) {
-            if (chunkAtual.length > 0) chunkAtual += '\n\n';
-            chunkAtual += parte;
-          } else {
-            chunks.push(chunkAtual);
-            
-            // Extrair a parte final para sobreposição
-            if (chunkAtual.length > sobreposicao) {
-              ultimoConteudo = chunkAtual.substring(chunkAtual.length - sobreposicao);
-            } else {
-              ultimoConteudo = chunkAtual;
-            }
-            
-            chunkAtual = ultimoConteudo + '\n\n' + parte;
-          }
-          
-          inicio = fim - sobreposicao; // Sobrepor com a parte anterior
-          if (inicio < 0) inicio = 0;
-        }
-      } else {
-        // Adicionar o parágrafo ao chunk atual
-        if (chunkAtual.length > 0) chunkAtual += '\n\n';
-        chunkAtual += paragrafo;
-      }
-    } else {
-      // Adicionar um separador se não for o primeiro parágrafo no chunk
-      if (chunkAtual.length > 0) {
-        chunkAtual += '\n\n';
-      }
-      chunkAtual += paragrafo;
-    }
+  // Limitar o número máximo de chunks para evitar explosão de memória
+  const maxChunks = Math.ceil(texto.length / (tamanhoMaximo - sobreposicao)) * 2; // Multiplicar por 2 para ter margem de segurança
+  
+  while (posicao < texto.length && chunks.length < maxChunks) {
+    // Calcular o fim do chunk atual
+    const fim = Math.min(posicao + tamanhoMaximo, texto.length);
+    
+    // Extrair o chunk
+    const chunk = texto.substring(posicao, fim);
+    chunks.push(chunk);
+    
+    // Avançar para a próxima posição, considerando a sobreposição
+    posicao = fim - sobreposicao;
+    
+    // Verificação de segurança para evitar loops infinitos
+    if (posicao <= 0 || posicao >= texto.length) break;
   }
   
-  // Adicionar o último chunk se houver conteúdo
-  if (chunkAtual.length > 0) {
-    chunks.push(chunkAtual);
+  console.log(`dividirTextoEmChunks: Texto dividido em ${chunks.length} chunks`);
+  
+  // Verificação final de segurança
+  if (chunks.length >= maxChunks) {
+    console.warn(`AVISO: Número máximo de chunks (${maxChunks}) atingido. O texto pode ser muito grande ou a lógica de divisão pode estar em loop.`);
   }
   
   return chunks;
