@@ -56,16 +56,25 @@ export const salvarBaseConhecimento = async (
   config: ConfiguracaoAPI,
   titulo: string,
   conteudo: string,
-  embedding: number[]
+  embedding: number[],
+  metadadosAdicionais?: Record<string, any>
 ) => {
   const supabase = criarClienteSupabase(config);
+  
+  // Metadados base que sempre existirão
+  const metadados = { 
+    titulo, 
+    dataCriacao: new Date().toISOString(), 
+    dataAtualizacao: new Date().toISOString(),
+    ...metadadosAdicionais // Adicionar metadados dinâmicos se fornecidos
+  };
   
   const { data, error } = await supabase
     .from('documents')
     .insert([
       {
         content: conteudo,
-        metadata: { titulo, dataCriacao: new Date().toISOString(), dataAtualizacao: new Date().toISOString() },
+        metadata: metadados,
         embedding
       }
     ])
@@ -94,7 +103,8 @@ export const atualizarBaseConhecimento = async (
   id: string,
   titulo: string,
   conteudo: string,
-  embedding: number[]
+  embedding: number[],
+  metadadosAdicionais?: Record<string, any>
 ) => {
   const supabase = criarClienteSupabase(config);
   
@@ -111,7 +121,8 @@ export const atualizarBaseConhecimento = async (
   const updatedMetadata = {
     ...existingDoc?.metadata,
     titulo,
-    dataAtualizacao: new Date().toISOString()
+    dataAtualizacao: new Date().toISOString(),
+    ...metadadosAdicionais // Adicionar metadados dinâmicos se fornecidos
   };
   
   const { data, error } = await supabase

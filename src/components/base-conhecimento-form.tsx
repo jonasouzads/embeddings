@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { ConfiguracaoAPI } from '@/types';
-import { gerarEmbedding } from '@/lib/openai';
+import { gerarEmbedding, dividirTextoEmChunks, limparTexto, gerarPerguntasRespostas } from '@/lib/openai';
 import { salvarBaseConhecimento, atualizarBaseConhecimento } from '@/lib/supabase';
 
 interface BaseConhecimentoFormProps {
@@ -41,21 +41,132 @@ export function BaseConhecimentoForm({
         throw new Error('Título e conteúdo são obrigatórios');
       }
 
-      // Gerar embedding para o conteúdo
-      const embedding = await gerarEmbedding(configuracaoAPI, conteudo);
-
-      // Salvar ou atualizar no Supabase
+      // Dividir o conteúdo em chunks com sobreposição (1000 caracteres ~= 400 tokens, 200 caracteres ~= 50 tokens de sobreposição)
+      const chunks = dividirTextoEmChunks(conteudo, 1000, 200);
+      
+      // Para atualização, processamos de forma similar à criação para garantir que todos os metadados sejam atualizados
       if (baseId) {
-        await atualizarBaseConhecimento(configuracaoAPI, baseId, titulo, conteudo, embedding);
+        // Limpar o texto antes de gerar o embedding
+        const textoLimpo = limparTexto(conteudo);
+        
+        // Gerar embedding para o conteúdo limpo
+        const embedding = await gerarEmbedding(configuracaoAPI, textoLimpo);
+        
+        // Gerar perguntas e respostas automaticamente para o conteúdo atualizado
+        let perguntasRespostas: Array<{pergunta: string, resposta: string}> = [];
+        try {
+          perguntasRespostas = await gerarPerguntasRespostas(configuracaoAPI, textoLimpo);
+          console.log(`Geradas ${perguntasRespostas.length} perguntas para o documento atualizado`);
+        } catch (qaError) {
+          console.error('Erro ao gerar perguntas para o documento atualizado:', qaError);
+          // Continua o processamento mesmo se falhar a geração de perguntas
+        }
+        
+        // Formatar o conteúdo para exibição ao usuário
+        let conteudoFormatado = `### Texto Vetorizado
+
+${textoLimpo}
+
+### Perguntas e Respostas Geradas
+
+`;
+        
+        if (perguntasRespostas.length > 0) {
+          perguntasRespostas.forEach((qa, index) => {
+            conteudoFormatado += `**Pergunta ${index + 1}:** ${qa.pergunta}\n**Resposta ${index + 1}:** ${qa.resposta}\n\n`;
+          });
+        } else {
+          conteudoFormatado += "Nenhuma pergunta gerada para este documento.\n";
+        }
+        
+        // Atualizar no Supabase com os novos metadados
+        await atualizarBaseConhecimento(
+          configuracaoAPI, 
+          baseId, 
+          titulo, 
+          conteudoFormatado, // Conteúdo formatado para exibição
+          embedding,
+          {
+            textoLimpo: textoLimpo, // Armazenar o texto limpo atualizado
+            perguntasRespostas: perguntasRespostas, // Armazenar perguntas e respostas atualizadas
+            dataAtualizacao: new Date().toISOString()
+          }
+        );
+        
         toast({
           title: 'Base de conhecimento atualizada',
-          description: 'A base de conhecimento foi atualizada com sucesso.',
+          description: 'A base de conhecimento foi atualizada com sucesso, incluindo embeddings e perguntas/respostas.',
         });
       } else {
-        await salvarBaseConhecimento(configuracaoAPI, titulo, conteudo, embedding);
+        // Para novos documentos, processamos cada chunk separadamente
+        let successCount = 0;
+        
+        // Processar cada chunk
+        for (let i = 0; i < chunks.length; i++) {
+          try {
+            // Limpar o texto do chunk antes de gerar o embedding
+            const textoLimpo = limparTexto(chunks[i]);
+            
+            // Gerar embedding para o chunk limpo
+            const embedding = await gerarEmbedding(configuracaoAPI, textoLimpo);
+            
+            // Gerar perguntas e respostas automaticamente para este chunk
+            let perguntasRespostas: Array<{pergunta: string, resposta: string}> = [];
+            try {
+              perguntasRespostas = await gerarPerguntasRespostas(configuracaoAPI, textoLimpo);
+              console.log(`Geradas ${perguntasRespostas.length} perguntas para o chunk ${i+1}/${chunks.length}`);
+            } catch (qaError) {
+              console.error(`Erro ao gerar perguntas para o chunk ${i+1}/${chunks.length}:`, qaError);
+              // Continua o processamento mesmo se falhar a geração de perguntas
+            }
+            
+            // Formatar o conteúdo para exibição ao usuário, mostrando apenas o texto vetorizado e as perguntas/respostas
+            let conteudoFormatado = `### Texto Vetorizado (Chunk ${i+1}/${chunks.length})
+
+${textoLimpo}
+
+### Perguntas e Respostas Geradas
+
+`;
+            
+            if (perguntasRespostas.length > 0) {
+              perguntasRespostas.forEach((qa, index) => {
+                conteudoFormatado += `**Pergunta ${index + 1}:** ${qa.pergunta}\n**Resposta ${index + 1}:** ${qa.resposta}\n\n`;
+              });
+            } else {
+              conteudoFormatado += "Nenhuma pergunta gerada para este chunk.\n";
+            }
+            
+            // Salvar chunk como documento separado, com metadados adicionais
+            await salvarBaseConhecimento(
+              configuracaoAPI, 
+              titulo, 
+              conteudoFormatado, // Conteúdo formatado para exibição
+              embedding,  // Embedding do texto limpo
+              // Adicionar metadados para rastrear chunks e incluir perguntas/respostas
+              {
+                chunkIndex: i,
+                totalChunks: chunks.length,
+                isFirstChunk: i === 0,
+                documentoOriginal: titulo,
+                textoLimpo: textoLimpo, // Armazenar o texto limpo para referência
+                perguntasRespostas: perguntasRespostas // Armazenar perguntas e respostas geradas
+              }
+            );
+            
+            successCount++;
+          } catch (chunkError) {
+            console.error(`Erro ao processar chunk ${i+1}/${chunks.length}:`, chunkError);
+          }
+        }
+        
+        if (successCount === 0) {
+          throw new Error('Falha ao processar todos os chunks do documento');
+        }
+        
         toast({
           title: 'Base de conhecimento criada',
-          description: 'A base de conhecimento foi criada com sucesso.',
+          description: `${successCount} de ${chunks.length} chunks processados e salvos com sucesso.`,
         });
       }
 
